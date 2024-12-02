@@ -81,6 +81,39 @@ def search_history():
             conn.close()
 
 
+@app.route('/add_history', methods=['POST'])
+def add_history():
+    data = request.json
+    connection = None
+    cursor = None
+    try:
+        connection = get_db_connection()
+        cursor = connection.cursor()
+
+        query = """
+        INSERT INTO historys (AccountID, isMalicious, analysisType, Report, Confidence, analysisContent)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        cursor.execute(query, (
+            data['AccountID'],
+            data['isMalicious'],
+            data['analysisType'],
+            data['Report'],
+            data['Confidence'],
+            data['analysisContent']
+        ))
+        connection.commit()
+        return jsonify({'success': True, 'message': 'History added successfully'})
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+
+
 @app.route('/url_analyze', methods=['POST'])
 def analyze_url_route():
     data = request.json

@@ -75,6 +75,14 @@ class _AnalyzePageState extends State<AnalyzePage> {
   bool _isTextFieldEnabled = false;
   String _selectedOption = 'URL';
   List<String> historyItems = [];
+  List<String> historyTypes = [];
+
+  int AccountID = loggedInAccountID;
+  String analysisType = 'URL';
+  String analysisContent = '';
+  bool isMalicious = false;
+  int Confidence = 0;
+  String Report = '';
 
   @override
   void initState() {
@@ -92,6 +100,7 @@ class _AnalyzePageState extends State<AnalyzePage> {
         if (data['success'] == true) {
           final List<dynamic> histories = data['histories'];
           setState(() {
+            historyTypes = histories.map<String>((item) => item['analysisType'] as String).toList();
             historyItems = histories.map<String>((item) => item['analysisContent'] as String).toList();
           });
         } else {
@@ -221,30 +230,100 @@ class _AnalyzePageState extends State<AnalyzePage> {
         body: jsonEncode(body),
       );
 
-      setState(() {
-        _loading = false;
-        if (response.statusCode == 200 && _selectedOption == 'URL') {
-          final result = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+
+        if (_selectedOption == 'URL') {
           String isPhishing = result['is_phishing'] == true ? 'Yes' : 'No';
           String confidence = result['confidence_score']?.toString() ?? 'N/A';
           String fullResult = const JsonEncoder.withIndent('  ').convert(result);
 
-          _addMessage('Is Phishing: $isPhishing', 'left');
-          _addMessage('Confidence: $confidence', 'left');
-          _addMessage('Full Result: $fullResult', 'left');
-        } else if (response.statusCode == 200 && _selectedOption == 'MSG') {
-          final result = jsonDecode(response.body);
+          setState(() {
+            _loading = false;
+            _addMessage('Is Phishing: $isPhishing', 'left');
+            _addMessage('Confidence: $confidence', 'left');
+            _addMessage('Full Result: $fullResult', 'left');
+          });
+
+          if (AccountID != 0) {
+            await _addHistory(
+              accountId: AccountID,
+              isMalicious: result['is_phishing'],
+              analysisType: 'URL',
+              report: result['indicators']?.toString() ?? 'N/A',
+              confidence: result['confidence_score'] ?? 0,
+              analysisContent: input,
+            );
+          }
+        } else if (_selectedOption == 'MSG') {
           String fullResult = result['analysis'];
-          _addMessage(fullResult, 'left');
-        } else {
-          _addMessage('Error occurred: ${response.statusCode}', 'left');
+          setState(() {
+            _loading = false;
+            _addMessage(fullResult, 'left');
+          });
+
+          if (AccountID != 0) {
+            await _addHistory(
+              accountId: AccountID,
+              isMalicious: false,
+              analysisType: 'MSG',
+              report: result['analysis'],
+              confidence: 0,
+              analysisContent: input,
+            );
+          }
         }
-      });
+      } else {
+        setState(() {
+          _loading = false;
+          _addMessage('Error occurred: ${response.statusCode}', 'left');
+        });
+      }
     } catch (e) {
       setState(() {
         _loading = false;
         _addMessage('Error occurred: $e', 'left');
       });
+    }
+  }
+
+  Future<void> _addHistory({
+    required int accountId,
+    required bool isMalicious,
+    required String analysisType,
+    required String report,
+    required int confidence,
+    required String analysisContent,
+  }) async {
+    try {
+      final Map<String, dynamic> body = {
+        "AccountID": accountId,
+        "isMalicious": isMalicious,
+        "analysisType": analysisType,
+        "Report": report,
+        "Confidence": confidence,
+        "analysisContent": analysisContent,
+      };
+
+      final response = await http.post(
+        Uri.parse('http://10.0.2.2:5000/add_history'),
+        headers: {"Content-Type": "application/json"},
+        body: json.encode(body),
+      );
+
+      if (response.statusCode == 200) {
+        final responseData = json.decode(response.body);
+        if (responseData['success']) {
+          print("History added successfully: ${responseData['message']}");
+          _fetchSearchHistory();
+        } else {
+          print("Failed to add history: ${responseData['message']}");
+        }
+      } else {
+        print("Error: Server returned status code ${response.statusCode}");
+      }
+    } catch (e) {
+      print("Exception occurred while adding history: $e");
     }
   }
 
@@ -289,6 +368,7 @@ class _AnalyzePageState extends State<AnalyzePage> {
     if (result != null) {
       final file = result.files.single;
       final filePath = file.path;
+      final fileName = file.name;
       if (filePath == null) {
         setState(() {
           _loading = false;
@@ -311,6 +391,18 @@ class _AnalyzePageState extends State<AnalyzePage> {
           _addMessage('Is Malicious: ${analysis['isMalicious']}', 'left');
           _addMessage('Confidence: ${analysis['confidence']}%', 'left');
           _addMessage('Full Result: ${analysis['fullResult']}', 'left');
+
+          if (AccountID != 0) {
+            _addHistory(
+              accountId: AccountID,
+              isMalicious: analysis['isMalicious'],
+              analysisType: 'FILE',
+              report: analysis['fullResult']?.toString() ?? 'N/A',
+              confidence: analysis['confidence'] ?? 0,
+              analysisContent: fileName,
+            );
+          }
+
         });
       } catch (e) {
         setState(() {
@@ -448,12 +540,12 @@ View detailed report: https://www.virustotal.com/gui/file/$analysisId
               leading: Icon(Icons.history),
               title: Text('Analyze History'),
             ),
-            ...historyItems.map((item) {
+            ...List.generate(historyItems.length, (index){
               return ListTile(
-                leading: const Icon(Icons.history),
-                title: Text(item),
+                leading: Text(historyTypes[index]),
+                title: Text(historyItems[index]),
               );
-            }).toList(),
+            }),
           ],
         ),
       ),
