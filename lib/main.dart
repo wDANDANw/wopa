@@ -76,6 +76,9 @@ class _AnalyzePageState extends State<AnalyzePage> {
   String _selectedOption = 'URL';
   List<String> historyItems = [];
   List<String> historyTypes = [];
+  List<int> historyConfidences = [];
+  List<bool> historyIsMalicious = [];
+  List<String> historyReports = [];
 
   int AccountID = loggedInAccountID;
   String analysisType = 'URL';
@@ -102,6 +105,9 @@ class _AnalyzePageState extends State<AnalyzePage> {
           setState(() {
             historyTypes = histories.map<String>((item) => item['analysisType'] as String).toList();
             historyItems = histories.map<String>((item) => item['analysisContent'] as String).toList();
+            historyConfidences = histories.map<int>((item) => item['Confidence'] as int).toList();
+            historyIsMalicious = histories.map<bool>((item) => item['isMalicious'] == 1).toList();
+            historyReports = histories.map<String>((item) => item['Report'] as String).toList();
           });
         } else {
           throw Exception('Failed to load search history');
@@ -327,7 +333,7 @@ class _AnalyzePageState extends State<AnalyzePage> {
     }
   }
 
-  // Chat Part/Report Part
+  // Chat Part (Report Part)
   void _addMessage(String message, String side) {
     setState(() {
       _messages.add({'message': message, 'side': side});
@@ -544,6 +550,16 @@ View detailed report: https://www.virustotal.com/gui/file/$analysisId
               return ListTile(
                 leading: Text(historyTypes[index]),
                 title: Text(historyItems[index]),
+                onTap: (){
+                  setState(() {
+                    Navigator.of(context).pop();
+                    _messages.removeWhere((msg) => msg['side'] == 'left');
+                    _addMessage('Request: ${historyItems[index]}', 'left');
+                    _addMessage('Confidence: ${historyConfidences[index]}', 'left');
+                    _addMessage('Is Malicious: ${historyIsMalicious[index] ? 'Yes' : 'No'}', 'left');
+                    _addMessage('Full Result: ${historyReports[index]}', 'left');
+                  });
+                },
               );
             }),
           ],
