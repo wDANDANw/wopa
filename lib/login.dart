@@ -26,7 +26,7 @@ class _LoginPageState extends State<LoginPage> {
       });
 
       final response = await http.post(
-        Uri.parse('http://10.0.2.2:5000/login'),
+        Uri.parse('http://10.0.2.2:5000/login'),//http://20.0.10.50:8000
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'username': _usernameController.text,

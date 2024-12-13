@@ -179,9 +179,9 @@ class _AnalyzePageState extends State<AnalyzePage> {
                 onPressed: () {
                   setState(() {
                     loggedInUserName = '';
+                    Navigator.of(context).pop();
                   });
-                  Navigator.of(context).pop();
-                  },
+                },
               ),
               TextButton(
                 child: const Text("No"),
