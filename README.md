@@ -12,6 +12,13 @@ By integrating flexible microservices, LLM-based reasoning, and automated testin
 ## General Architecture
 ![Architecture](./docs/General_Concepts_and_Designs/Architecture.png)
 
+## Demo Videos
+- Of Frontend
+[Demo1](./docs/finalized.mp4)
+
+- Of LLM-V Based UI Testing in Emulated Android
+[Demo2](./docs/wopa-demo-narrated.mp4)
+
 ## Get Started
 - Full System with Docker Compose
 Run ``git clone https://github.com/wDANDANw/wopa.git`` to clone the repo.
