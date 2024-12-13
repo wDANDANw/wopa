@@ -10,7 +10,7 @@ By integrating flexible microservices, LLM-based reasoning, and automated testin
 - Operator-Based Workflows: Guided by philosophical principles and well-defined prompts, agents collaborate effectively with minimal human oversight.
 
 ## General Architecture
-![Architecture](https://github.com/user-attachments/assets/34c557ce-e970-44fa-b1ad-a9829f7e1f5a)
+![Architecture](./docs/General_Concepts_and_Designs/Architecture.png)
 
 ## Get Started
 - Full System with Docker Compose
@@ -85,7 +85,7 @@ Run ``git clone https://github.com/wDANDANw/wopa.git`` to clone the repo.
 Run ``git clone --branch tree git@github.com:wDANDANw/wopa.git`` to clone frontend Flutter/Android build code.
 
 ## More Documentations
-Please check the (docs)[./docs/General_Concepts_and_Designs] folder for comprehensive documentations, including 
+Please check the [Docs](./docs/General_Concepts_and_Designs) folder for comprehensive documentations, including 
 - Project Philosophies
 - Project Charter
 - Architecture Plans
