@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+redis
+httpx
+gradio
+pytest
+pytest-mock
+python-dotenv
+pymysql

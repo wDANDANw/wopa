@@ -1,0 +1,397 @@
+###############################################################################
+# emulator_env.py
+#
+# Purpose:
+# The EmulatorEnv class manages interactions with emulator instances that run
+# Android apps in a controlled environment. Unlike a static configuration, 
+# emulator instances are not defined upfront. Instead, they are dynamically 
+# provisioned by Terraform when needed.
+#
+# Key Responsibilities:
+# 1. Load emulator endpoints (if any) from instances.json or config.
+# 2. If no endpoints are available, trigger provisioning by calling `provisioner.provision_emulators()`.
+# 3. Once endpoints exist, choose one and connect via adb:
+#    - `adb connect host:port`
+#    - `adb install <app>`
+#    - `adb monkey` to launch the app
+#    - `adb exec-out screencap -p` to get a screenshot
+# 4. Return a dict with "visuals", "events", and a unique "task_id".
+# 5. Provide a `get_vnc_url(task_id)` method to return a vnc:// URL for that emulator.
+#
+# Changes from Previous Version:
+# - Added integration with `provisioner.py` submodule for dynamic provisioning.
+# - On no endpoints, `_provision_new_emulator()` now calls `provisioner.provision_emulators()`.
+# - Added comprehensive comments, maintainability notes, and design explanations.
+#
+# Requirements:
+# - config_loader.py for reading config.yaml.
+# - provisioner.py for Terraform-based provisioning.
+# - adb installed inside the providers container (or available via PATH).
+# - `instances.json` updated after provisioning to reflect new endpoints.
+#
+# Maintainability:
+# - If the provisioning logic changes (like needing multiple emulators at once or 
+#   passing arguments to `provision_emulators()`), update `_provision_new_emulator()`.
+# - If adb commands change or we add different steps (like testing app UI), 
+#   extend run_app accordingly.
+# - If we add error handling or logging, integrate with Python's logging or new frameworks.
+#
+###############################################################################
+
+import os
+import json
+import uuid
+import random
+import subprocess
+import time  # For wait loops if needed
+import base64
+from typing import Dict, Any
+
+import logging
+logger = logging.getLogger(__name__)
+
+from utils import config_loader
+from core import provisioner  # Import our provisioner module as a library
+
+# Custom exceptions for clarity
+class EmulatorConnectionError(Exception):
+    pass
+
+class EmulatorInstallError(Exception):
+    pass
+
+class EmulatorRunError(Exception):
+    pass
+
+
+class EmulatorEnv:
+    def __init__(self):
+        """
+        Initialize EmulatorEnv by loading configuration and existing endpoints.
+        
+        Steps:
+        1. Load config.yaml.
+        2. Read emulator settings, including timeouts, vnc_url_template, etc.
+        3. Load endpoints from instances.json if present; fallback to config if not.
+        4. If no endpoints even after fallback, we don't provision immediately here;
+           instead, run_app() triggers provisioning if needed.
+        
+        Maintainability:
+        - If we decide to always provision at startup if no endpoints found, 
+          we can do it here. Current design defers provisioning until run_app is called.
+        """
+        self.config = config_loader.load_config("config.yaml")
+        emulator_config = self.config.get("emulator", {})
+        self.timeout = emulator_config.get("timeout_seconds", 30)
+        self.max_retries = emulator_config.get("max_retries", 2)
+        self.vnc_url_template = emulator_config.get("vnc_url_template", "vnc://{host}:{port}")
+        self.default_vnc_port = emulator_config.get("default_vnc_port", 5900)
+
+        # Attempt to load endpoints from instances.json
+        self.endpoints = []
+
+        instances_path = "instances.json"
+        if os.path.exists(instances_path):
+            
+            # TODO: Hardcoded to ensure new emulator instances are created
+            os.remove(instances_path)
+            
+            # with open(instances_path, "r") as f:
+            #     instances_data = json.load(f)
+            #     self.endpoints = instances_data.get("emulator", [])
+        
+        # # Fallback to config if no endpoints in instances.json
+        # if not self.endpoints:
+        #     self.endpoints = emulator_config.get("endpoints", [])
+
+        # We do not raise error here if no endpoints, because run_app() can trigger provisioning.
+
+        # In-memory mapping: task_id → {"endpoint":"http://emulatorX:5555","app_ref":"..."}
+        self.task_map: Dict[str, Dict[str,Any]] = {}
+
+    def _provision_new_emulator(self):
+        """
+        Provision new emulator instances by calling the provisioner module.
+
+        Steps:
+        1. Call provisioner.provision_emulators(), which runs Terraform apply.
+        2. After provisioning, reload endpoints from instances.json.
+        
+        If still no endpoints after provisioning, raise an error.
+
+        Maintainability:
+        - If we want to specify how many emulators to add, 
+          we could add arguments to provisioner.provision_emulators().
+        - If provisioning fails, an EmulatorConnectionError is raised.
+        """
+        try:
+            logger.info("EmulatorEnv: _provision_new_emulator: Provisioning new emulator(s)")
+            logger.info(f"EmulatorEnv: _provision_new_emulator: Current Endpoints: {self.endpoints}")
+            # Provision new emulator(s)
+            provisioner.provision_emulators()
+
+            # Hardcoded wait to nesure new emulator instances are created
+            time.sleep(20)
+        except SystemExit as e:
+            logger.error("Provisioning failed. Unable to get new emulator endpoints.")
+            # If provisioner uses sys.exit(1) on errors, catch it and raise a more explicit error here.
+            raise EmulatorConnectionError("No emulator endpoints available and provisioning failed, unreachable environment") from e
+
+        # After provisioning, reload endpoints
+        self._reload_endpoints()
+
+    def _reload_endpoints(self):
+        """
+        Reload endpoints from instances.json after provisioning.
+        
+        Steps:
+        1. Load instances.json again.
+        2. Extract emulator endpoints.
+        3. If still empty, raise ValueError.
+
+        Maintainability:
+        - If instances.json format changes, update parsing logic.
+        """
+        instances_path = "instances.json"
+        if os.path.exists(instances_path):
+            with open(instances_path, "r") as f:
+                instances_data = json.load(f)
+                self.endpoints = instances_data.get("emulator", [])
+        if not self.endpoints:
+            raise ValueError("No emulator endpoints available even after provisioning. Check Terraform configs and networking.")
+
+    def _choose_endpoint(self) -> str:
+        """
+        Choose one emulator endpoint from the list. If no endpoints, trigger provisioning.
+        
+        Steps:
+        1. If endpoints empty, call _provision_new_emulator().
+        2. If still no endpoints, raise ValueError.
+        3. Return a random endpoint from the list.
+
+        Maintainability:
+        - Currently random choice, could implement round-robin or 
+          tracking usage if multiple tests run concurrently.
+        """
+        if not self.endpoints:
+            logger.info("EmulatorEnv: choose_endpoint: No endpoints, provisioning new emulator(s)")
+            self._provision_new_emulator()
+        if not self.endpoints:
+            raise ValueError("No emulator endpoints available after provisioning attempt.")
+        return random.choice(self.endpoints)
+
+    def _run_adb_command(self, cmd_list, timeout=None, check=True):
+        """
+        Helper to run adb commands with logging.
+        cmd_list: list of arguments (e.g. ["adb","-s","host:port","shell","pm","list","packages","-f"])
+        """
+        logger.debug(f"Running ADB command: {' '.join(cmd_list)}")
+        try:
+            result = subprocess.run(cmd_list, capture_output=True, text=True, timeout=timeout or self.timeout, check=check)
+            logger.debug(f"ADB command output: {result.stdout.strip()}")
+            return result.stdout.strip()
+        except subprocess.CalledProcessError as e:
+            logger.error(f"ADB command failed: {e.stderr}")
+            if check:
+                raise
+            return e.stderr.strip()
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"ADB command timed out: {e}")
+            raise EmulatorConnectionError(f"ADB command timed out: {cmd_list}")
+
+    def _get_installed_packages(self, host_port: str) -> list:
+        """
+        Return a list of lines from `pm list packages -f`.
+        Each line looks like: package:<path> <package.name>
+        We'll just return the full lines for comparison.
+        """
+        cmd = ["adb", "-s", host_port, "shell", "pm", "list", "packages", "-f"]
+        output = self._run_adb_command(cmd, check=True)
+        return output.splitlines()
+
+    def _detect_new_package(self, before_list: list, after_list: list) -> str:
+        """
+        Given the packages before and after installation,
+        detect which package line is new.
+        Return the package name extracted from that line.
+        
+        Lines look like:
+        package:/data/app/~~xyzID/pkg.name/base.apk=pkg.name
+        We split on '=' and the last part is package name.
+        """
+        before_set = set(before_list)
+        after_set = set(after_list)
+        new_lines = after_set - before_set
+        if not new_lines:
+            logger.error("No new package found after installation.")
+            raise ValueError("Failed to detect newly installed package. No new packages found.")
+
+        # Assuming exactly one new package was installed
+        new_line = new_lines.pop()
+        logger.debug(f"New package line detected: {new_line}")
+
+        # Extract package name
+        if '=' in new_line:
+            pkg_name = new_line.split('=',1)[-1].strip()
+            logger.info(f"Detected package name: {pkg_name}")
+            return pkg_name
+        else:
+            logger.error(f"Cannot parse package name from line: {new_line}")
+            raise ValueError("Cannot parse package name from installed packages output.")
+
+    def run_app(self, app_ref: str) -> Dict[str, Any]:
+        """
+        Run a given Android app on an emulator instance:
+        Steps:
+        1. Validate app_ref.
+        2. Ensure we have endpoints. If not, provision them.
+        3. Choose one endpoint and run adb commands to:
+           - connect
+           - install
+           - monkey (launch app)
+           - screencap screenshot
+        4. Return visuals/events/task_id
+
+        Retries:
+        - max_retries if connection or timeout issues occur.
+        - On persistent failure, raise EmulatorConnectionError.
+
+        Maintainability:
+        - If ADB paths differ or we add more steps, just extend this function.
+        - If we need app package name detection from APK, add code to parse package name.
+        - If screenshot is optional, handle failures differently.
+        """
+        app_ref = app_ref.strip()
+        if not app_ref:
+            raise ValueError("app_ref must not be empty in run_app.")
+
+        attempts = 0
+        last_exception = None
+
+        logger.info(f"EmulatorEnv: run_app: Attempting to run app {app_ref} on emulator...")
+        logger.info(f"EmulatorEnv: run_app: Current Endpoints: {self.endpoints}")
+
+        while attempts <= self.max_retries:
+            attempts += 1
+            endpoint = self._choose_endpoint()  # e.g., "http://emulator1:5555"
+            logger.info(f"EmulatorEnv: run_app: Chosen Endpoint: {endpoint}")
+
+            # Parse host:port
+            host_port = endpoint.split("//")[-1]  # "emulator1:5555"
+            parts = host_port.split(":")
+            if len(parts) < 2:
+                raise ValueError(f"Cannot parse host:port from endpoint: {endpoint}")
+
+            host, port = parts[0], parts[1]
+
+            logger.info(f"Attempting to run app from {app_ref} on {host}:{port}...")
+
+            try:
+                # Step 1: adb connect
+                connect_cmd = ["adb", "connect", f"{host}:{port}"]
+                result = self._run_adb_command(connect_cmd, check=True)
+                if "connected" not in result.lower():
+                    raise EmulatorConnectionError(f"Failed to connect to emulator at {host}:{port}, output: {result}")
+
+                # Step 2: Packages before install
+                before_list = self._get_installed_packages(f"{host}:{port}")
+
+                # Step 3: adb install app_ref
+                install_cmd = ["adb", "-s", f"{host}:{port}", "install", app_ref]
+                install_res = self._run_adb_command(install_cmd, check=False)
+                if "Success" not in install_res:
+                    raise EmulatorInstallError(f"Failed to install app {app_ref}, output: {install_res}")
+
+                # Step 4: Packages after install
+                after_list = self._get_installed_packages(f"{host}:{port}")
+                pkg_name = self._detect_new_package(before_list, after_list)
+
+                # Step 5: adb shell monkey
+                monkey_cmd = ["adb", "-s", f"{host}:{port}", "shell", "monkey", "-v", "-p", pkg_name, "1"]
+                monkey_res = self._run_adb_command(monkey_cmd, check=False)
+                if "injecting event" not in monkey_res.lower():
+                    # If monkey aborted
+                    raise EmulatorRunError(f"Failed to run app {app_ref}, output: {monkey_res}")
+
+                # Step 6: screencap
+                screenshot_cmd = ["adb", "-s", f"{host}:{port}", "exec-out", "screencap", "-p"]
+                sc_res = subprocess.run(screenshot_cmd, capture_output=True, timeout=self.timeout)
+                if sc_res.returncode != 0:
+                    raise EmulatorRunError(f"Failed to capture screenshot: {sc_res.stderr}")
+
+                png_data = sc_res.stdout
+                screenshot_b64 = base64.b64encode(png_data).decode('utf-8')
+
+                events = ["tap", "scroll", "launch"]  # mock events
+                task_id = str(uuid.uuid4())
+                self.task_map[task_id] = {"endpoint": endpoint, "app_ref": app_ref}
+
+                visuals = {"screenshot": screenshot_b64}
+                logger.info(f"App run successful. Task ID: {task_id}")
+                return {"visuals": visuals, "events": events, "task_id": task_id}
+
+            except EmulatorConnectionError as e:
+                last_exception = e
+                # Retry
+            except EmulatorInstallError:
+                # Won't improve by retrying different endpoints
+                raise
+            except EmulatorRunError:
+                # Also scenario-specific, no point retrying
+                raise
+            except subprocess.TimeoutExpired as e:
+                last_exception = EmulatorConnectionError(f"ADB command timed out: {e}")
+            except Exception as e:
+                # Unexpected error, treat as connection/env issue and retry
+                last_exception = e
+
+        # If we exit loop without success
+        if last_exception:
+            raise EmulatorConnectionError(f"Failed to connect to emulator: unreachable after {self.max_retries+1} attempts: {last_exception}")
+        else:
+            raise EmulatorConnectionError("Failed to connect to emulator: unknown reasons after retries.")
+
+    def get_vnc_url(self, task_id: str) -> str:
+        """
+        Given a task_id, return a VNC URL:
+        Steps:
+        1. Lookup endpoint from task_map.
+        2. Parse host from endpoint.
+        3. Use vnc_url_template and default_vnc_port.
+
+        If task_id unknown or parsing fails, raise errors.
+
+        Maintainability:
+        - If VNC logic changes (like reading port from TF output), update here.
+        - If different endpoints have different ports, store them in task_map during run_app.
+        """
+        if task_id not in self.task_map:
+            raise KeyError(f"No known emulator instance for task_id: {task_id}")
+
+        info = self.task_map[task_id]
+        endpoint = info["endpoint"]
+        host_port = endpoint.split("//")[-1]
+        parts = host_port.split(":")
+        if len(parts) < 1:
+            raise ValueError(f"Cannot parse host from endpoint: {endpoint}")
+        host = parts[0]
+
+        vnc_url = self.vnc_url_template.format(host=host, port=self.default_vnc_port)
+        return vnc_url
+
+###############################################################################
+# Explanation:
+#
+# - Integrates with `core.provisioner` to provision emulators at runtime.
+# - On no endpoints scenario, `_provision_new_emulator()` calls `provisioner.provision_emulators()`.
+# - After provisioning, instances.json is updated; `_reload_endpoints()` retrieves new endpoints.
+# - run_app relies on adb commands. On success, returns visuals/events/task_id.
+# - get_vnc_url constructs a vnc:// URL from known host and default_vnc_port.
+#
+# If adb or Terraform commands fail, clear exceptions inform the caller what went wrong.
+#
+# Future Enhancements:
+# - Add logging (e.g., use `logging.getLogger(__name__)` and log debug/info messages).
+# - Support more advanced selection of emulator endpoints or scenario-based provisioning.
+# - If we need to scale multiple emulators at once, add arguments to `provisioner.provision_emulators(count=...)`.
+###############################################################################

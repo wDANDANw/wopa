@@ -1,0 +1,38 @@
+###############################################################################
+# config.yaml
+#
+# Purpose:
+# This YAML file provides configuration for the Workers subsystem.
+#
+# Keys:
+# - mode: "local" or "online"
+#   - "local": The system uses local providers and the providers_server_url to interact.
+#   - "online": The system may call external APIs directly (e.g., openai, virustotal).
+#
+# - providers_server_url: The base URL for local providers if mode=local.
+#   Example: "http://providers:8003"
+#
+# Additional optional keys:
+# - logging_level: "INFO", "DEBUG" if you want to override logging level (not implemented in loader yet).
+# - other keys as needed in future (e.g. timeouts, external API keys).
+#
+# Maintainability:
+# - If new config fields are needed (e.g., a separate endpoint for LLM?), add here 
+#   and update the code that reads them.
+# - If using secrets, consider environment variables or a secrets manager 
+#   rather than plain yaml for sensitive data.
+#
+# Example:
+# mode: "local"
+# providers_server_url: "http://providers:8003"
+#
+# If mode=online:
+# mode: "online"
+# providers_server_url: "http://some-external-url.com"
+#
+# If some fields are missing, defaults from config_loader.py apply.
+#
+###############################################################################
+
+mode: "local"
+providers_server_url: "http://providers:8003"

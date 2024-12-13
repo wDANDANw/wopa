@@ -1,0 +1,11 @@
+label,URL,suspicious,outcome,time
+1,https://www.southbankmosaics.com,,error_exception,5.315072774887085
+1,https://www.uni-mainz.de,,error_exception,28.387964487075806
+1,https://www.voicefmradio.co.uk,yes,fail,32.35173583030701
+1,https://www.sfnmjournal.com,yes,fail,6.250262022018433
+1,https://www.rewildingargentina.org,,error_exception,12.653979539871216
+1,https://www.globalreporting.org,,error_exception,8.039331436157227
+1,https://www.saffronart.com,,error_exception,9.514422178268433
+1,https://www.nerdscandy.com,,error_exception,4.357994794845581
+1,https://www.hyderabadonline.in,yes,fail,5.843371868133545
+1,https://www.aap.org,,error_exception,18.505356311798096

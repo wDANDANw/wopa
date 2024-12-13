@@ -1,0 +1,223 @@
+services:
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: wopa_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - BACKEND_URL=http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - frontend_assets:/home/developer/app/assets
+    networks:
+      - wopa_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: wopa_backend
+    environment:
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      MESSAGE_SERVICE_URL: "http://message-service.fake"
+      LINK_SERVICE_URL: "http://link-service.fake"
+      FILE_SERVICE_URL: "http://file-service.fake"
+      APP_SERVICE_URL: "http://app-service.fake"
+      SANDBOX_PROVIDER_URL: "http://sandbox-provider.fake"
+      EMULATOR_PROVIDER_URL: "http://emulator-provider.fake"
+      DB_HOST: "mysql"
+      DB_USER: "root"
+      DB_PASSWORD: "123456"  # root password to match MYSQL_ROOT_PASSWORD
+      DB_NAME: "phishing"
+    depends_on:
+      - redis
+      - mysql
+      - services
+    networks:
+      - wopa_network
+      - wopa_backend
+    ports:
+      - "8000:8000"
+    # Command logic remains the same
+    command: ["./entrypoint.sh"]
+    volumes:
+      - ./backend:/backend
+    # This volume mount overrides the code inside the image with the host code.
+    # After changing code locally, no rebuild needed. Just restart `docker compose up` if needed.
+    # If uvicorn reload is desired on code change, we can enable uvicorn --reload (not recommended in production).
+  
+  mysql:
+    image: mysql:5.7
+    container_name: wopa_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: phishing
+    volumes:
+      - ./db:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"
+    networks:
+      - wopa_backend
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  redis:
+    image: redis:latest
+    container_name: wopa_redis
+    networks:
+      - wopa_network
+    ports:
+      - "6379:6379"
+    environment: {} # no special env needed for redis
+
+
+  services:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+    container_name: wopa_services
+    environment:
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+    depends_on:
+      - redis
+      - workers
+    ports:
+      - "8001:8001"  # Expose services server on host:8001
+    command: ["./entrypoint.sh"]
+    networks:
+      - wopa_network
+    volumes:
+      - ./services:/services:cached
+      # This mounts the current code into the container so changes reflect without rebuild.
+      # In production, might remove this for immutability.
+      # If we need logs or other volumes, add here.
+
+  
+  workers:
+    build:
+      context: ./workers
+      dockerfile: Dockerfile
+    container_name: wopa_workers
+    environment:
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
+      # MODE and TEST_MODE environment variables are set via `docker compose run -e` in the Makefile
+      # If you need extra environment variables for providers' endpoints,
+      # ensure config.yaml references them or add them here.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      - redis
+      - providers
+    ports:
+      - "8002:8002" # Expose workers server on host:8002 if needed
+    command: ["./entrypoint.sh"]
+    volumes:
+      - ./workers:/workers:cached
+    networks:
+      - wopa_network
+    runtime: nvidia  # Use NVIDIA runtime
+
+
+  providers:
+    # The providers container handles LLM queries via Ollama, 
+    # and interacts with sandbox and emulator instances provisioned by Terraform.
+    # Initially runs uvicorn (MODE=run). For tests, run `make test-unit-providers` which overrides MODE.
+    build:
+      context: ./providers
+      dockerfile: Dockerfile
+    container_name: wopa_providers
+    networks:
+      - wopa_network
+    environment: {}
+    #   - LLM_HOST=ollama
+    #   - LLM_PORT=11423
+    # These could be managed in config.yaml too, so no duplication needed.
+    ports:
+      - "8003:8003"
+    command: ["./entrypoint.sh"]
+    volumes:
+      # Mount the providers code so that changes can reflect without rebuild
+      - ./providers:/providers    
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      # The providers service depends on ollama for LLM queries.
+      - ollama
+
+  # https://github.com/valiantlynx/ollama-docker/blob/main/docker-compose-ollama-gpu.yaml
+  ollama:
+    volumes:
+      - ./ollama/ollama:/root/.ollama
+    container_name: wopa_ollama
+    pull_policy: always
+    tty: true
+    restart: unless-stopped
+    image: ollama/ollama:latest
+    ports:
+      - 11434:11434
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    networks:
+      - ollama-docker
+      - wopa_network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11423"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ollama-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: ollama-webui
+    volumes:
+      - ./ollama/ollama-webui:/app/backend/data
+    depends_on:
+      - ollama
+    ports:
+      - 8080:8080
+    environment: # https://docs.openwebui.com/getting-started/env-configuration#default_models
+      - OLLAMA_BASE_URLS=http://host.docker.internal:11434 #comma separated ollama hosts
+      - ENV=dev
+      - WEBUI_AUTH=False
+      - WEBUI_NAME=WOPA
+      - WEBUI_URL=http://localhost:8080
+      - WEBUI_SECRET_KEY=secret
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    restart: unless-stopped
+    networks:
+      - ollama-docker
+
+networks:
+  wopa_network:
+    name: wopa_network
+    external: true
+    attachable: true
+  ollama-docker:
+    external: false
+  wopa_backend:
+    external: false
+
+volumes:
+  frontend_assets:

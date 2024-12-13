@@ -1,0 +1,39 @@
+###############################################################################
+# services_config.yaml
+#
+# Purpose:
+# This YAML file provides default configuration values for the Services subsystem.
+#
+# Structure:
+# The file is loaded by config_loader.py and may be overridden by environment variables.
+#
+# Keys:
+# - WORKER_SERVER_URL: The default URL of the Worker subsystem. The environment 
+#   variable WORKER_SERVER_URL can override this.
+#
+# Example Additions:
+# If we later decide services need thresholds or debug flags, we add them here:
+# - message_analysis:
+#     spam_threshold: 0.7
+# - link_analysis:
+#     max_redirects: 5
+#
+# Maintainability:
+# - Keep keys lowercase and snake_case.
+# - Include comments next to keys describing their purpose.
+# - As complexity grows, subdivide into sections per service if needed.
+#
+###############################################################################
+
+WORKER_SERVER_URL: "http://workers:8002"
+
+# Example future configs:
+# message_analysis:
+#   spam_threshold: 0.7
+# link_analysis:
+#   max_redirects: 5
+# file_analysis:
+#   static_timeout: 10   # seconds
+#   dynamic_timeout: 60
+# app_analysis:
+#   emulator_type: "android"

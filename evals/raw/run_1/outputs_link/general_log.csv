@@ -1,0 +1,2 @@
+timestamp,batch,processed,total,success,fail,error,accuracy,avg_time
+2024-12-11T04:36:09.757716,1,26,10000,8,0,18,30.77,8.9808

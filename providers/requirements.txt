@@ -1,0 +1,38 @@
+###############################################################################
+# requirements.txt for Providers Subsystem (No Version Pinning)
+#
+# Purpose:
+# Install the necessary Python packages without fixed versions, 
+# allowing automatic updates to the latest compatible releases.
+#
+# Caveat:
+# Without version pins, there's a risk of unexpected breaks if 
+# dependencies release incompatible updates. Consider using 
+# version constraints (e.g., fastapi>=0.95,<1.0) or a lock file.
+#
+# Packages:
+# - fastapi, uvicorn: For the providers server endpoints and ASGI server.
+# - pyyaml: For parsing config.yaml.
+# - requests: For integration tests and possibly calling external APIs.
+# - pytest and related plugins: For running unit and integration tests.
+#
+# Maintainability:
+# - If a package upgrade breaks something, add version constraints later.
+# - Periodically re-run tests after `pip install -U` to ensure compatibility.
+###############################################################################
+
+fastapi
+uvicorn[standard]
+pyyaml
+requests
+pytest
+pytest-cov
+pytest-asyncio
+pytest-mock
+freezegun
+gradio==3.15.0
+httpx
+
+###############################################################################
+# End of requirements.txt
+###############################################################################

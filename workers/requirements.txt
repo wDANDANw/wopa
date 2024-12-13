@@ -1,0 +1,62 @@
+###############################################################################
+# requirements.txt for WOPA Worker Subsystem
+#
+# Purpose:
+# This file specifies the Python libraries needed by the worker subsystem. 
+# They cover web serving (FastAPI, uvicorn), testing (pytest), making HTTP calls 
+# to external endpoints (requests), data validation (pydantic), messaging/storage 
+# options (redis), YAML config parsing (pyyaml), and admin UI display (gradio).
+#
+# We do not pin exact versions to avoid compatibility issues as requested. 
+# This means we rely on our test suite to detect breaking changes if libraries 
+# release incompatible updates. If stability becomes a concern later, we can pin 
+# versions or use a requirements lock file.
+#
+# Maintainability:
+# - Add new packages here if new functionalities require them.
+# - Remove packages if no longer needed.
+# - If package versions cause issues, consider pinning them in the future.
+#
+# Dependencies:
+# - fastapi: Web framework for building the worker server endpoints.
+# - uvicorn: ASGI server for running FastAPI.
+# - pytest: Testing framework for unit tests.
+# - requests: For making HTTP calls to LLM, sandbox, emulator endpoints (mocked in unit tests).
+# - pydantic: Data validation models for request bodies and config sanity checks.
+# - redis: Potentially used for queueing or storage logic if we integrate redis in future.
+# - pyyaml: To load `config.yaml`.
+# - gradio: For admin UI at `/admin`.
+###############################################################################
+
+fastapi
+uvicorn
+pytest
+requests
+pydantic
+redis
+pyyaml
+gradio
+beautifulsoup4
+fastapi-utils
+typing-inspect
+
+# torch
+# torchvision
+transformers
+modelscope==1.15.0
+TensorFlow==2.9.1
+keras==2.9.0
+git+https://github.com/openai/CLIP.git
+opencv-python
+matplotlib
+pycocotools
+timm
+SentencePiece
+tf_slim
+tf_keras==2.15.0
+pyclipper
+shapely
+supervision==0.21.0
+dashscope
+numpy==1.26.4
+openai

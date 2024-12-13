@@ -1,0 +1,89 @@
+###############################################################################
+# config.yaml for Providers Subsystem
+#
+# Purpose:
+# This file stores configuration parameters that the Providers subsystem reads 
+# at startup. By externalizing these settings, we avoid hardcoding values 
+# in code, making changes easier and safer.
+#
+# Example Contents:
+# - Sandbox endpoints: URLs or hostnames of sandbox instances.
+# - Emulator endpoints: URLs or hostnames for emulator instances.
+# - LLM Settings: If certain LLM endpoints or models need configuration.
+# - Timeouts and retry settings for calls to external services.
+#
+# Maintainability:
+# - If Terraform updates the number of sandbox/emulator instances, 
+#   `provisioner.py` might update this file (or a separate `instances.json`). 
+#   The code can load these values dynamically.
+# - Keep comments to help new developers understand what each field represents.
+# - If sensitive data (like API keys) ever appear, consider a separate secrets manager.
+###############################################################################
+
+# Global settings
+environment: "development"   # Could be "production", "staging", etc.
+
+# LLM Configuration
+llm:
+  # If connecting to a local Ollama LLM endpoint:
+  endpoint: "http://ollama:11434"  
+  models:
+    chat_model:
+      name: "llama3.1:8b"        # Explicitly set the 8b variant
+      default_params:
+        temperature: 0.7
+        top_p: 0.9
+    vision_model:
+      name: "llama3.2-vision:11b" # Explicitly set the 11b variant
+      default_params:
+        temperature: 0.6
+        top_p: 0.9
+
+# Sandbox Configuration
+sandbox:
+  # Terraform may create multiple instances. Initially, one main endpoint:
+  # Later, integration tests or scaling tests might read from instances.json 
+  # or update this config with multiple endpoints.
+  endpoints:
+    - "http://sandbox1:8002"
+
+  # Timeouts and retries
+  timeout_seconds: 10
+  max_retries: 2
+
+# Emulator Configuration
+emulator:
+  # Similar structure: multiple emulator endpoints managed by Terraform.
+  # One main instance for now:
+  endpoints:
+    - "http://emulator1:5555"   # Example: ADB endpoint
+  # If we also need a VNC port listing or other metadata, we can add them here.
+  # Possibly "vnc_port" or "vnc_url" fields if stable:
+  vnc_url_template: "vnc://{host}:{port}"
+  default_vnc_port: 5900
+
+  timeout_seconds: 30
+  max_retries: 2
+
+# Logging Configuration
+logging:
+  level: "DEBUG"
+  # In production, might use "INFO" or "WARNING". 
+  # DEBUG helps during development or troubleshooting.
+
+# Additional Fields (As Needed)
+# Example: If we want to integrate with a future caching system or a database:
+# cache:
+#   host: "redis"
+#   port: 6379
+#
+# If we plan to add performance tuning or special flags for certain features:
+# features:
+#   enable_special_mode: false
+
+###############################################################################
+# End of config.yaml
+#
+# Remember to reload/restart the providers subsystem after making changes here.
+# The code uses providers/utils/config_loader.py to load and parse these settings.
+###############################################################################

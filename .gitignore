@@ -1,0 +1,100 @@
+###############################################################################
+# 1. General OS-generated files
+###############################################################################
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.~tmp~
+
+###############################################################################
+# 2. Python-related caches and virtual environments
+###############################################################################
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments (venv, .venv, env)
+venv/
+.venv/
+*.env
+env/
+ENV/
+build/
+dist/
+
+# Pipenv, Poetry caches
+*.egg-info/
+.eggs/
+.mypy_cache/
+.pytest_cache/
+
+###############################################################################
+# 3. Terraform-generated files
+###############################################################################
+# Terraform state files and crash logs
+terraform.tfstate
+terraform.tfstate.backup
+.crash.log
+.terraform/
+.terraform.lock.hcl
+
+# Terraform plan output files
+*.tfplan
+
+###############################################################################
+# 4. Docker and container-related artifacts
+###############################################################################
+# Docker image and container related
+docker-compose.override.yml
+# If you build images locally and store tarballs
+*.tar
+
+###############################################################################
+# 5. Editor/IDE configuration files
+###############################################################################
+# Common editor directories
+.vscode/
+.idea/
+*.iml
+
+# JetBrains-specific
+*.idea/
+
+###############################################################################
+# 6. APKs and other large binary artifacts
+###############################################################################
+# APKs stored in providers/apks
+apks/
+*.apk
+
+# Screenshots or test output
+screenshot/
+*.png
+*.jpg
+*.jpeg
+
+###############################################################################
+# Additional logs, temp files
+###############################################################################
+*.log
+*.tmp
+instances.json
+coverage/
+coverage.xml
+htmlcov/
+
+# If using pytest or other test frameworks that generate temp files
+pytestdebug.log
+
+# ollama
+ollama/
+
+# Logs & CSV
+.log
+.csv
+
+###############################################################################
+# End of .gitignore
+###############################################################################

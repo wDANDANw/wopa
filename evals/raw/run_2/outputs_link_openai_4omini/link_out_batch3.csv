@@ -1,0 +1,4 @@
+label,URL,suspicious,outcome,time
+1,https://www.theadanews.com,yes,fail,168.30218410491943
+0,http://www.web2.hashgains.com,yes,success,16.650914907455444
+1,https://www.mayfield.com,yes,fail,4.6850574016571045
